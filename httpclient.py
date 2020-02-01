@@ -17,7 +17,6 @@
 # Do not use urllib's HTTP GET and POST mechanisms.
 # Write your own HTTP GET and POST
 # The point is to understand what you have to send and get experience with it
-
 import sys
 import socket
 import re
@@ -32,11 +31,18 @@ class HTTPResponse(object):
         self.code = code
         self.body = body
 
+    def __str__(self):
+        return f"{self.code}\r\n{self.body}"
+
 class HTTPClient(object):
     #def get_host_port(self,url):
 
+    def __init__(self):
+        self.protocol = 'HTTP/1.1'
+
     def connect(self, host, port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.settimeout(1)
         self.socket.connect((host, port))
         return None
 
@@ -60,22 +66,102 @@ class HTTPClient(object):
         buffer = bytearray()
         done = False
         while not done:
-            part = sock.recv(1024)
+
+            # Not sure how to know exactly when the server is done responding. But for now using timeouts.
+            try:
+                part = sock.recv(1024)
+            except socket.timeout as e:
+                part = b''
+
             if (part):
                 buffer.extend(part)
             else:
                 done = not part
         return buffer.decode('utf-8')
 
+    def parse_raw_response(self, response):
+        """
+        Parses a raw string response from a server
+        :param response:
+        :return: HTTPResponse
+        """
+        headers, body = response.split('\r\n\r\n', 1)
+
+        headers = headers.split('\r\n')
+        # Parse out the response code
+        response_header = re.match(r'^HTTP/([0-9.]+ ([0-9]+) ([A-Z]+))', headers[0])
+        response_http_ver = response_header.group(1)
+        response_code = int(response_header.group(2))
+        response_code_desc = response_header.group(3)
+
+        return HTTPResponse(response_code, body)
+
+    def request(self, url, method, args=None):
+        """
+        Handles connecting to a resource and passing the request. Returns the response as a raw string.
+        :param url: string, the url to request to
+        :return: string|false
+        """
+        port = 80
+        url_parts = urllib.parse.urlparse(url, 'http')
+        host = url_parts.netloc
+        # Check for a specific port passed in
+        host_parts = host.split(':', 1)
+        if len(host_parts) > 1:
+            host, port = host_parts
+            port = int(port)
+
+
+        request = f"{method} {url_parts.path or '/'} {self.protocol}\r\n"
+        # Add headers
+        headers = {
+            "Accept": "*/*",
+            "Host": host,
+            "Content-Length": '0'
+        }
+        if args is not None:
+            headers.update(args)
+        for header in headers.keys():
+            request += f"{header}: {headers[header]}\r\n"
+        # Separate headers from body
+        request += '\r\n\r\n'
+        #  Get the response from the server
+        self.connect(host, port)
+        self.sendall(request)
+        result = self.recvall(self.socket)
+        self.close()
+
+        return result
+
+
     def GET(self, url, args=None):
         code = 500
         body = ""
-        return HTTPResponse(code, body)
+
+        try:
+            response = self.request(url, 'GET')
+            # Parse the response
+            response = self.parse_raw_response(response)
+        except Exception as e:
+            # Something failed, respond with an error code
+            # print(e)
+            return HTTPResponse(code, body)
+
+
+
+        return response
 
     def POST(self, url, args=None):
         code = 500
         body = ""
-        return HTTPResponse(code, body)
+        try:
+            response = self.request(url, 'POST', args)
+            # Parse the response
+            response = self.parse_raw_response(response)
+        except:
+            return HTTPResponse(code, body)
+
+        return response
 
     def command(self, url, command="GET", args=None):
         if (command == "POST"):
