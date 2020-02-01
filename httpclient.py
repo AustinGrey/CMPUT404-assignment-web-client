@@ -113,18 +113,27 @@ class HTTPClient(object):
 
 
         request = f"{method} {url_parts.path or '/'} {self.protocol}\r\n"
+
+        # Calculate body based on arguments
+        body = ''
+        post_args = []
+        for arg in (args or {}).keys():
+            post_args.append(f'{arg}={args[arg]}')
+        body += '&'.join(post_args)
+
         # Add headers
         headers = {
             "Accept": "*/*",
             "Host": host,
-            "Content-Length": '0'
+            "Content-Length": str(len(body))
+        #     @todo Content-type header? Different for post?
         }
-        if args is not None:
-            headers.update(args)
         for header in headers.keys():
             request += f"{header}: {headers[header]}\r\n"
         # Separate headers from body
-        request += '\r\n\r\n'
+        request += '\r\n'
+        request += body
+
         #  Get the response from the server
         self.connect(host, port)
         self.sendall(request)
