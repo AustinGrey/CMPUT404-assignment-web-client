@@ -117,16 +117,17 @@ class HTTPClient(object):
         # Calculate body based on arguments
         body = ''
         post_args = []
-        for arg in (args or {}).keys():
-            post_args.append(f'{arg}={args[arg]}')
-        body += '&'.join(post_args)
+        if(args is not None):
+            body += urllib.parse.urlencode(args)
+        # for arg in (args or {}).keys():
+        #     post_args.append(f'{arg}={args[arg]}')
+        # body += '&'.join(post_args)
 
         # Add headers
         headers = {
             "Accept": "*/*",
             "Host": host,
             "Content-Length": str(len(body))
-        #     @todo Content-type header? Different for post?
         }
         for header in headers.keys():
             request += f"{header}: {headers[header]}\r\n"
